@@ -11,6 +11,7 @@ contract Project {
         string description;
         bool goalReached;
         bool fundsWithdrawn;
+        bool isPaused;
         mapping(address => uint256) contributions;
     }
     
@@ -21,6 +22,8 @@ contract Project {
     event ContributionMade(uint256 indexed campaignId, address indexed contributor, uint256 amount);
     event FundsWithdrawn(uint256 indexed campaignId, address indexed creator, uint256 amount);
     event RefundIssued(uint256 indexed campaignId, address indexed contributor, uint256 amount);
+    event CampaignUpdated(uint256 indexed campaignId, address indexed creator, string newDescription);
+    event CampaignStatusToggled(uint256 indexed campaignId, bool isPaused);
     
     // Function 1: Create a new crowdfunding campaign
     function createCampaign(
@@ -44,6 +47,7 @@ contract Project {
         newCampaign.raised = 0;
         newCampaign.goalReached = false;
         newCampaign.fundsWithdrawn = false;
+        newCampaign.isPaused = false;
         
         emit CampaignCreated(campaignCounter, msg.sender, _goal, deadline);
         campaignCounter++;
@@ -57,6 +61,7 @@ contract Project {
         require(block.timestamp < campaign.deadline, "Campaign has ended");
         require(msg.value > 0, "Contribution must be greater than 0");
         require(!campaign.goalReached, "Campaign goal already reached");
+        require(!campaign.isPaused, "Campaign is currently paused");
         
         campaign.contributions[msg.sender] += msg.value;
         campaign.raised += msg.value;
@@ -107,7 +112,8 @@ contract Project {
         string memory title,
         string memory description,
         bool goalReached,
-        bool fundsWithdrawn
+        bool fundsWithdrawn,
+        bool isPaused
     ) {
         Campaign storage campaign = campaigns[_campaignId];
         return (
@@ -118,11 +124,42 @@ contract Project {
             campaign.title,
             campaign.description,
             campaign.goalReached,
-            campaign.fundsWithdrawn
+            campaign.fundsWithdrawn,
+            campaign.isPaused
         );
     }
     
     function getContribution(uint256 _campaignId, address _contributor) external view returns (uint256) {
         return campaigns[_campaignId].contributions[_contributor];
     }
+    
+    // Function 4: Update campaign description (only creator can update before deadline)
+    function updateCampaign(uint256 _campaignId, string memory _newDescription) external {
+        Campaign storage campaign = campaigns[_campaignId];
+        
+        require(_campaignId < campaignCounter, "Campaign does not exist");
+        require(msg.sender == campaign.creator, "Only creator can update campaign");
+        require(block.timestamp < campaign.deadline, "Cannot update after deadline");
+        require(bytes(_newDescription).length > 0, "Description cannot be empty");
+        
+        campaign.description = _newDescription;
+        
+        emit CampaignUpdated(_campaignId, msg.sender, _newDescription);
+    }
+    
+    // Function 5: Emergency pause/unpause campaign (only creator)
+    function toggleCampaignStatus(uint256 _campaignId) external {
+        Campaign storage campaign = campaigns[_campaignId];
+        
+        require(_campaignId < campaignCounter, "Campaign does not exist");
+        require(msg.sender == campaign.creator, "Only creator can toggle status");
+        require(block.timestamp < campaign.deadline, "Cannot modify after deadline");
+        require(!campaign.goalReached, "Cannot modify completed campaign");
+        
+        campaign.isPaused = !campaign.isPaused;
+        
+        emit CampaignStatusToggled(_campaignId, campaign.isPaused);
+    }
 }
+     
+       
